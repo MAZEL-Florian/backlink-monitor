@@ -15,10 +15,10 @@ return new class extends Migration
             $table->boolean('is_active');
             $table->boolean('is_dofollow');
             $table->string('anchor_text')->nullable();
-            $table->integer('response_time')->nullable(); // en millisecondes
+            $table->integer('response_time')->nullable(); 
             $table->timestamp('checked_at');
             $table->text('error_message')->nullable();
-            $table->boolean('exact_match')->nullable(); // Nouveau champ
+            $table->boolean('exact_match')->nullable();
             $table->timestamps();
 
             $table->index(['backlink_id', 'checked_at']);

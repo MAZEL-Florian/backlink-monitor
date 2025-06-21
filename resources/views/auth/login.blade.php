@@ -15,7 +15,6 @@
                 <p class="text-gray-600 mt-2">Connectez-vous à votre compte</p>
             </div>
 
-            <!-- Session Status -->
             @if (session('status'))
                 <div class="mb-4 font-medium text-sm text-green-600">
                     {{ session('status') }}
@@ -25,7 +24,6 @@
             <form method="POST" action="{{ route('login') }}">
                 @csrf
 
-                <!-- Email Address -->
                 <div>
                     <label for="email" class="block font-medium text-sm text-gray-700">Email</label>
                     <input id="email" class="block mt-1 w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500" 
@@ -35,7 +33,6 @@
                     @enderror
                 </div>
 
-                <!-- Password -->
                 <div class="mt-4">
                     <label for="password" class="block font-medium text-sm text-gray-700">Mot de passe</label>
                     <input id="password" class="block mt-1 w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
@@ -45,7 +42,6 @@
                     @enderror
                 </div>
 
-                <!-- Remember Me -->
                 <div class="block mt-4">
                     <label for="remember_me" class="inline-flex items-center">
                         <input id="remember_me" type="checkbox" class="rounded border-gray-300 text-blue-600 shadow-sm focus:ring-blue-500" name="remember">

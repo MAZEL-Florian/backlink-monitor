@@ -4,7 +4,6 @@
 
 @section('content')
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <!-- Header -->
     <div class="flex justify-between items-center mb-8">
         <div>
             <h1 class="text-3xl font-bold text-gray-900">Logs des Vérifications</h1>
@@ -30,7 +29,6 @@
         </div>
     </div>
 
-    <!-- Logs Display -->
     <div class="bg-white shadow rounded-lg">
         <div class="px-6 py-4 border-b border-gray-200">
             <h3 class="text-lg font-medium text-gray-900">Logs en Temps Réel</h3>
@@ -67,7 +65,6 @@
         @endif
     </div>
 
-    <!-- Instructions -->
     <div class="mt-8 bg-blue-50 border border-blue-200 rounded-md p-4">
         <div class="flex">
             <div class="flex-shrink-0">
@@ -91,7 +88,6 @@
 </div>
 
 <script>
-// Auto-refresh des logs toutes les 30 secondes
 setInterval(function() {
     location.reload();
 }, 30000);

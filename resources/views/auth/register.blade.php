@@ -18,7 +18,6 @@
             <form method="POST" action="{{ route('register.store') }}">
                 @csrf
 
-                <!-- Name -->
                 <div>
                     <label for="name" class="block font-medium text-sm text-gray-700">Nom</label>
                     <input id="name" class="block mt-1 w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500" 
@@ -28,7 +27,6 @@
                     @enderror
                 </div>
 
-                <!-- Email Address -->
                 <div class="mt-4">
                     <label for="email" class="block font-medium text-sm text-gray-700">Email</label>
                     <input id="email" class="block mt-1 w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500" 
@@ -38,7 +36,6 @@
                     @enderror
                 </div>
 
-                <!-- Password -->
                 <div class="mt-4">
                     <label for="password" class="block font-medium text-sm text-gray-700">Mot de passe</label>
                     <input id="password" class="block mt-1 w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
@@ -48,7 +45,6 @@
                     @enderror
                 </div>
 
-                <!-- Confirm Password -->
                 <div class="mt-4">
                     <label for="password_confirmation" class="block font-medium text-sm text-gray-700">Confirmer le mot de passe</label>
                     <input id="password_confirmation" class="block mt-1 w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"

@@ -4,7 +4,6 @@
 
 @section('content')
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <!-- Header -->
     <div class="flex justify-between items-center mb-8">
         <div>
             <div class="flex items-center space-x-2 mb-2">
@@ -24,13 +23,31 @@
             @endif
         </div>
         <div class="flex space-x-3">
-            <a href="{{ route('backlinks.create', ['project_id' => $project->id]) }}" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center">
+            @if($backlinks->count() > 0)
+                <button id="bulk-delete-btn" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 hidden" onclick="confirmBulkDelete()">
+                    <svg class="w-5 h-5 mr-2 inline" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clip-rule="evenodd"/>
+                        <path fill-rule="evenodd" d="M4 5a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                    Supprimer (<span id="selected-count">0</span>)
+                </button>
+                <form action="{{ route('projects.check-all-backlinks', $project) }}" method="POST" class="inline">
+                    @csrf
+                    <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                        </svg>
+                        Vérifier Tous ({{ $backlinks->total() }})
+                    </button>
+                </form>
+            @endif
+            <a href="{{ route('backlinks.create', ['project_id' => $project->id]) }}" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center">
                 <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                     <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/>
                 </svg>
-                Ajouter Backlink
+                Ajouter Backlinks
             </a>
-            <a href="{{ route('projects.edit', $project) }}" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center">
+            <a href="{{ route('projects.edit', $project) }}" class="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center">
                 <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
                 </svg>
@@ -39,7 +56,6 @@
         </div>
     </div>
 
-    <!-- Stats Cards -->
     <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
         <div class="bg-white overflow-hidden shadow rounded-lg">
             <div class="p-5">
@@ -142,16 +158,23 @@
         </div>
     </div>
 
-    <!-- Backlinks Table -->
     @if($backlinks->count() > 0)
         <div class="bg-white shadow rounded-lg overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-medium text-gray-900">Backlinks</h3>
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-medium text-gray-900">Backlinks</h3>
+                    <button type="button" id="select-all-btn" class="text-sm text-blue-600 hover:text-blue-800">
+                        Tout sélectionner
+                    </button>
+                </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <input type="checkbox" id="select-all-checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" onchange="toggleAllCheckboxes()">
+                            </th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 Source
                             </th>
@@ -176,13 +199,35 @@
                         @foreach($backlinks as $backlink)
                             <tr class="hover:bg-gray-50">
                                 <td class="px-6 py-4 whitespace-nowrap">
+                                    <input type="checkbox" 
+                                           name="backlink_ids[]" 
+                                           value="{{ $backlink->id }}" 
+                                           class="backlink-checkbox h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                           onchange="updateBulkDeleteButton()">
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
                                     <div>
                                         <p class="text-sm font-medium text-gray-900">{{ $backlink->source_domain }}</p>
                                         <p class="text-sm text-gray-500 truncate max-w-xs">{{ $backlink->source_url }}</p>
                                     </div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
-                                    <span class="text-sm text-gray-900">{{ $backlink->anchor_text ?: 'N/A' }}</span>
+                                    <div class="text-sm text-gray-900">
+                                        @if($backlink->anchor_text)
+                                            @if(str_starts_with($backlink->anchor_text, '[IMG]'))
+                                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"/>
+                                                    </svg>
+                                                    {{ str_replace('[IMG] ', '', $backlink->anchor_text) }}
+                                                </span>
+                                            @else
+                                                {{ $backlink->anchor_text }}
+                                            @endif
+                                        @else
+                                            <span class="text-gray-400">N/A</span>
+                                        @endif
+                                    </div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="flex items-center space-x-2">
@@ -226,15 +271,18 @@
                 </table>
             </div>
             
-            <!-- Pagination -->
             @if($backlinks->hasPages())
                 <div class="px-6 py-4 border-t border-gray-200">
                     {{ $backlinks->links() }}
                 </div>
             @endif
         </div>
+
+        <form id="bulk-delete-form" action="{{ route('projects.bulk-delete-backlinks', $project) }}" method="POST" class="hidden">
+            @csrf
+            @method('DELETE')
+        </form>
     @else
-        <!-- Empty State -->
         <div class="bg-white shadow rounded-lg">
             <div class="text-center py-12">
                 <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -254,4 +302,66 @@
         </div>
     @endif
 </div>
+
+<script>
+function updateBulkDeleteButton() {
+    const checkboxes = document.querySelectorAll('.backlink-checkbox:checked');
+    const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+    const selectedCount = document.getElementById('selected-count');
+    
+    if (checkboxes.length > 0) {
+        bulkDeleteBtn.classList.remove('hidden');
+        selectedCount.textContent = checkboxes.length;
+    } else {
+        bulkDeleteBtn.classList.add('hidden');
+    }
+}
+
+function toggleAllCheckboxes() {
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    const checkboxes = document.querySelectorAll('.backlink-checkbox');
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAllCheckbox.checked;
+    });
+    
+    updateBulkDeleteButton();
+}
+
+function confirmBulkDelete() {
+    const checkboxes = document.querySelectorAll('.backlink-checkbox:checked');
+    const count = checkboxes.length;
+    
+    if (count === 0) return;
+    
+    const message = count === 1 
+        ? 'Êtes-vous sûr de vouloir supprimer ce backlink ? Cette action ne peut pas être annulée.'
+        : `Êtes-vous sûr de vouloir supprimer ces ${count} backlinks ? Cette action ne peut pas être annulée.`;
+    
+    if (confirm(message)) {
+        const form = document.getElementById('bulk-delete-form');
+        
+        checkboxes.forEach(checkbox => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'backlink_ids[]';
+            input.value = checkbox.value;
+            form.appendChild(input);
+        });
+        
+        form.submit();
+    }
+}
+
+document.getElementById('select-all-btn').addEventListener('click', function() {
+    const checkboxes = document.querySelectorAll('.backlink-checkbox');
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    
+    checkboxes.forEach(cb => cb.checked = !allChecked);
+    selectAllCheckbox.checked = !allChecked;
+    this.textContent = allChecked ? 'Tout sélectionner' : 'Tout désélectionner';
+    updateBulkDeleteButton();
+});
+</script>
 @endsection

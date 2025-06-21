@@ -10,16 +10,22 @@ use Illuminate\Support\Facades\Log;
 class BacklinkCheckerService
 {
     private Client $client;
+    private string $userAgent;
 
     public function __construct()
     {
+        $this->userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+        
         $this->client = new Client([
             'timeout' => 30,
             'connect_timeout' => 10,
             'verify' => false,
-            'allow_redirects' => true,
+            'allow_redirects' => [
+                'max' => 5,
+                'track_redirects' => true
+            ],
             'headers' => [
-                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent' => $this->userAgent,
                 'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language' => 'fr-FR,fr;q=0.9,en;q=0.8',
                 'Accept-Encoding' => 'gzip, deflate',
@@ -34,25 +40,37 @@ class BacklinkCheckerService
         
         Log::info("=== DÉBUT VÉRIFICATION BACKLINK {$backlink->id} ===");
         Log::info("URL Source: {$backlink->source_url}");
-        Log::info("URL Cible: {$backlink->target_url}");
+        Log::info("Domaine du projet: {$backlink->project->domain}");
         
         try {
-            // ÉTAPE 1: Vérifier si l'URL source est accessible
             Log::info("ÉTAPE 1: Vérification de l'accessibilité de l'URL source");
             $response = $this->client->get($backlink->source_url);
             $responseTime = round((microtime(true) - $startTime) * 1000);
             $statusCode = $response->getStatusCode();
             $content = $response->getBody()->getContents();
+            $contentType = $response->getHeader('Content-Type')[0] ?? null;
+            $contentLength = strlen($content);
+
+            $redirects = [];
+            if ($response->hasHeader('X-Guzzle-Redirect-History')) {
+                $redirects = $response->getHeader('X-Guzzle-Redirect-History');
+            }
 
             Log::info("URL source accessible", [
                 'status_code' => $statusCode,
-                'content_length' => strlen($content),
-                'response_time' => $responseTime . 'ms'
+                'content_length' => $contentLength,
+                'content_type' => $contentType,
+                'response_time' => $responseTime . 'ms',
+                'redirects_count' => count($redirects)
             ]);
 
-            // ÉTAPE 2: Chercher l'URL cible dans le contenu
-            Log::info("ÉTAPE 2: Recherche de l'URL cible dans le contenu");
-            $linkFound = $this->findTargetLink($content, $backlink->target_url);
+            Log::info("ÉTAPE 2: Recherche de liens vers le domaine du projet");
+            $linkFound = $this->findProjectLinks($content, $backlink->project->domain);
+
+            if ($linkFound['found'] && $linkFound['target_url']) {
+                $backlink->update(['target_url' => $linkFound['target_url']]);
+                Log::info("URL cible mise à jour: {$linkFound['target_url']}");
+            }
 
             $result = [
                 'status_code' => $statusCode,
@@ -61,9 +79,15 @@ class BacklinkCheckerService
                 'anchor_text' => $linkFound['anchor_text'],
                 'response_time' => $responseTime,
                 'exact_match' => $linkFound['exact_match'],
+                'target_url' => $linkFound['target_url'],
+                'user_agent' => $this->userAgent,
+                'redirects' => $redirects,
+                'content_length' => $contentLength,
+                'content_type' => $contentType,
+                'raw_response' => config('app.debug') ? substr($content, 0, 1000) : null,
             ];
 
-            Log::info("=== RÉSULTAT FINAL ===", $result);
+            Log::info("=== RÉSULTAT FINAL ===", array_except($result, ['raw_response']));
             return $result;
 
         } catch (RequestException $e) {
@@ -79,84 +103,58 @@ class BacklinkCheckerService
             return [
                 'status_code' => $statusCode,
                 'is_active' => false,
-                'is_dofollow' => $backlink->is_dofollow,
-                'anchor_text' => $backlink->anchor_text,
+                'is_dofollow' => true,
+                'anchor_text' => null,
                 'response_time' => $responseTime,
                 'error_message' => $e->getMessage(),
                 'exact_match' => false,
+                'target_url' => null,
+                'user_agent' => $this->userAgent,
+                'redirects' => [],
+                'content_length' => null,
+                'content_type' => null,
+                'raw_response' => null,
             ];
         }
     }
 
-    private function findTargetLink(string $content, string $targetUrl): array
+    private function findProjectLinks(string $content, string $projectDomain): array
     {
-        Log::info("Recherche de l'URL cible: {$targetUrl}");
+        $projectHost = parse_url($projectDomain, PHP_URL_HOST);
+        Log::info("Recherche de liens vers le domaine: {$projectHost}");
         
-        // Extraire le chemin de l'URL cible pour Wikipedia
-        $targetPath = parse_url($targetUrl, PHP_URL_PATH);
-        Log::info("Chemin de l'URL cible: {$targetPath}");
-
-        // MÉTHODE 1: Recherche de tous les liens dans la page
         $allLinks = $this->extractAllLinks($content);
         Log::info("Total de liens trouvés: " . count($allLinks));
 
-        // Afficher quelques liens pour debug
-        $sampleLinks = array_slice($allLinks, 0, 10);
-        foreach ($sampleLinks as $i => $link) {
-            Log::info("Lien exemple {$i}: {$link['href']} -> '{$link['text']}'");
-        }
-
-        // MÉTHODE 2: Chercher des correspondances
+        $projectLinks = [];
         foreach ($allLinks as $link) {
             $href = $link['href'];
-            $text = $link['text'];
             
-            // Vérifications multiples
-            if ($this->isUrlMatch($href, $targetUrl)) {
-                Log::info("✓ CORRESPONDANCE TROUVÉE!", [
-                    'href' => $href,
-                    'text' => $text,
-                    'target' => $targetUrl
-                ]);
-                
-                return [
-                    'found' => true,
-                    'anchor_text' => $text,
-                    'is_dofollow' => $link['is_dofollow'],
-                    'exact_match' => $href === $targetUrl
-                ];
+            if ($this->isProjectLink($href, $projectHost, $projectDomain)) {
+                $projectLinks[] = $link;
+                Log::info("Lien vers le projet trouvé: {$href} -> '{$link['text']}'");
             }
         }
 
-        // MÉTHODE 3: Recherche par texte d'ancrage si fourni
-        if (!empty($targetPath)) {
-            foreach ($allLinks as $link) {
-                $href = $link['href'];
-                
-                // Pour Wikipedia, chercher les liens relatifs
-                if (strpos($href, $targetPath) !== false) {
-                    Log::info("✓ CORRESPONDANCE PAR CHEMIN!", [
-                        'href' => $href,
-                        'text' => $link['text'],
-                        'target_path' => $targetPath
-                    ]);
-                    
-                    return [
-                        'found' => true,
-                        'anchor_text' => $link['text'],
-                        'is_dofollow' => $link['is_dofollow'],
-                        'exact_match' => false
-                    ];
-                }
-            }
+        if (!empty($projectLinks)) {
+            $bestLink = $this->selectBestLink($projectLinks, $projectDomain);
+            
+            return [
+                'found' => true,
+                'anchor_text' => $bestLink['text'],
+                'is_dofollow' => $bestLink['is_dofollow'],
+                'exact_match' => $bestLink['href'] === $projectDomain,
+                'target_url' => $this->normalizeUrl($bestLink['href'], $projectDomain),
+            ];
         }
 
-        Log::info("✗ Aucune correspondance trouvée");
+        Log::info("✗ Aucun lien vers le projet trouvé");
         return [
             'found' => false,
             'anchor_text' => null,
             'is_dofollow' => true,
-            'exact_match' => false
+            'exact_match' => false,
+            'target_url' => null,
         ];
     }
 
@@ -164,7 +162,6 @@ class BacklinkCheckerService
     {
         $links = [];
         
-        // Utiliser DOMDocument pour une extraction plus fiable
         try {
             $dom = new \DOMDocument();
             @$dom->loadHTML($content);
@@ -172,13 +169,14 @@ class BacklinkCheckerService
             
             foreach ($linkElements as $element) {
                 $href = $element->getAttribute('href');
-                $text = trim($element->textContent);
                 $rel = $element->getAttribute('rel');
                 
                 if (!empty($href)) {
+                    $anchorText = $this->extractAnchorText($element);
+                    
                     $links[] = [
                         'href' => $href,
-                        'text' => $text,
+                        'text' => $anchorText,
                         'is_dofollow' => !str_contains(strtolower($rel), 'nofollow')
                     ];
                 }
@@ -186,60 +184,91 @@ class BacklinkCheckerService
         } catch (\Exception $e) {
             Log::warning("Erreur DOM, utilisation de regex", ['error' => $e->getMessage()]);
             
-            // Fallback avec regex
-            preg_match_all('/<a\s+[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is', $content, $matches, PREG_SET_ORDER);
-            
-            foreach ($matches as $match) {
-                $href = $match[1];
-                $text = strip_tags($match[2]);
-                $fullTag = $match[0];
-                
-                $links[] = [
-                    'href' => $href,
-                    'text' => trim($text),
-                    'is_dofollow' => !preg_match('/rel=["\'][^"\']*nofollow[^"\']*["\']/', $fullTag)
-                ];
-            }
+            $links = array_merge($links, $this->extractLinksWithRegex($content));
         }
         
         return $links;
     }
 
-    private function isUrlMatch(string $href, string $targetUrl): bool
+    private function extractAnchorText(\DOMElement $element): string
     {
-        // Correspondance exacte
-        if ($href === $targetUrl) {
-            return true;
+        $images = $element->getElementsByTagName('img');
+        
+        if ($images->length > 0) {
+            $img = $images->item(0);
+            $alt = $img->getAttribute('alt');
+            $src = $img->getAttribute('src');
+            
+            if (!empty($alt)) {
+                return '[IMG] ' . trim($alt);
+            } else {
+                $filename = basename(parse_url($src, PHP_URL_PATH));
+                return '[IMG] ' . $filename;
+            }
         }
         
-        // Correspondance avec URL absolue vs relative
-        $targetPath = parse_url($targetUrl, PHP_URL_PATH);
-        if ($href === $targetPath) {
-            return true;
-        }
+        $text = trim($element->textContent);
         
-        // Correspondance avec domaine
-        $targetHost = parse_url($targetUrl, PHP_URL_HOST);
-        if (strpos($href, $targetHost) !== false && strpos($href, $targetPath) !== false) {
-            return true;
-        }
-        
-        // Correspondance sans protocole
-        $hrefNormalized = preg_replace('/^https?:\/\//', '', $href);
-        $targetNormalized = preg_replace('/^https?:\/\//', '', $targetUrl);
-        if ($hrefNormalized === $targetNormalized) {
-            return true;
-        }
-        
-        // Correspondance avec variations (www, slash final, etc.)
-        $variations = $this->getUrlVariations($targetUrl);
-        foreach ($variations as $variation) {
-            if ($href === $variation) {
-                return true;
+        if (empty($text)) {
+            $title = $element->getAttribute('title');
+            if (!empty($title)) {
+                return '[TITLE] ' . $title;
             }
             
-            $variationPath = parse_url($variation, PHP_URL_PATH);
-            if ($href === $variationPath) {
+            return '[LIEN VIDE]';
+        }
+        
+        return $text;
+    }
+
+    private function extractLinksWithRegex(string $content): array
+    {
+        $links = [];
+        
+        preg_match_all('/<a\s+[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is', $content, $matches, PREG_SET_ORDER);
+        
+        foreach ($matches as $match) {
+            $href = $match[1];
+            $linkContent = $match[2];
+            $fullTag = $match[0];
+            
+            if (preg_match('/<img[^>]+alt=["\']([^"\']*)["\'][^>]*>/i', $linkContent, $imgMatch)) {
+                $alt = $imgMatch[1];
+                $text = !empty($alt) ? '[IMG] ' . $alt : '[IMG] Image sans alt';
+            } elseif (preg_match('/<img[^>]+src=["\']([^"\']+)["\'][^>]*>/i', $linkContent, $imgMatch)) {
+                $src = $imgMatch[1];
+                $filename = basename(parse_url($src, PHP_URL_PATH));
+                $text = '[IMG] ' . $filename;
+            } else {
+                $text = trim(strip_tags($linkContent));
+                if (empty($text)) {
+                    $text = '[LIEN VIDE]';
+                }
+            }
+            
+            $links[] = [
+                'href' => $href,
+                'text' => $text,
+                'is_dofollow' => !preg_match('/rel=["\'][^"\']*nofollow[^"\']*["\']/', $fullTag)
+            ];
+        }
+        
+        return $links;
+    }
+
+    private function isProjectLink(string $href, string $projectHost, string $projectDomain): bool
+    {
+        if (str_contains($href, $projectHost)) {
+            return true;
+        }
+        
+        if ($href === $projectDomain) {
+            return true;
+        }
+        
+        $variations = $this->getUrlVariations($projectDomain);
+        foreach ($variations as $variation) {
+            if ($href === $variation || str_contains($href, parse_url($variation, PHP_URL_HOST))) {
                 return true;
             }
         }
@@ -247,33 +276,61 @@ class BacklinkCheckerService
         return false;
     }
 
+    private function selectBestLink(array $projectLinks, string $projectDomain): array
+    {
+        foreach ($projectLinks as $link) {
+            if ($link['href'] === $projectDomain) {
+                return $link;
+            }
+        }
+        
+        foreach ($projectLinks as $link) {
+            if ($link['is_dofollow']) {
+                return $link;
+            }
+        }
+        
+        return $projectLinks[0];
+    }
+
+    private function normalizeUrl(string $href, string $projectDomain): string
+    {
+        if (str_starts_with($href, 'http')) {
+            return $href;
+        }
+        
+        $projectParsed = parse_url($projectDomain);
+        $baseUrl = $projectParsed['scheme'] . '://' . $projectParsed['host'];
+        
+        if (str_starts_with($href, '/')) {
+            return $baseUrl . $href;
+        }
+        
+        return $baseUrl . '/' . $href;
+    }
+
     private function getUrlVariations(string $url): array
     {
         $variations = [];
         
-        // Version avec et sans www
         if (strpos($url, '://www.') !== false) {
             $variations[] = str_replace('://www.', '://', $url);
         } else {
             $variations[] = str_replace('://', '://www.', $url);
         }
         
-        // Version http/https
         if (strpos($url, 'https://') === 0) {
             $variations[] = str_replace('https://', 'http://', $url);
         } else {
             $variations[] = str_replace('http://', 'https://', $url);
         }
         
-        // Version sans slash final
         $variations[] = rtrim($url, '/');
         
-        // Version avec slash final
         if (!str_ends_with($url, '/')) {
             $variations[] = $url . '/';
         }
         
-        // Supprimer les doublons
         return array_unique($variations);
     }
 }

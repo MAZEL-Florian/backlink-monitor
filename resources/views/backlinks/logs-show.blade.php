@@ -4,7 +4,6 @@
 
 @section('content')
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <!-- Header -->
     <div class="flex justify-between items-center mb-8">
         <div>
             <div class="flex items-center space-x-2 mb-2">
@@ -30,7 +29,6 @@
         </div>
     </div>
 
-    <!-- Logs Timeline -->
     <div class="bg-white shadow rounded-lg overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200">
             <h3 class="text-lg font-medium text-gray-900">Historique des Journaux</h3>
@@ -91,7 +89,6 @@
                 </div>
             </div>
             
-            <!-- Pagination -->
             @if($logs->hasPages())
                 <div class="px-6 py-4 border-t border-gray-200">
                     {{ $logs->links() }}

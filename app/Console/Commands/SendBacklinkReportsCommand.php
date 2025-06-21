@@ -34,7 +34,6 @@ class SendBacklinkReportsCommand extends Command
             try {
                 $reportData = $reportService->generateReportData($user);
                 
-                // Envoyer seulement si il y a des problèmes ou si c'est un rapport hebdomadaire
                 $hasIssues = $reportData['inactive_backlinks']->count() > 0 || 
                            $reportData['error_backlinks']->count() > 0;
                 
@@ -57,7 +56,6 @@ class SendBacklinkReportsCommand extends Command
 
     private function isWeeklyReport(): bool
     {
-        // Envoyer un rapport hebdomadaire le lundi
         return now()->isMonday();
     }
 }

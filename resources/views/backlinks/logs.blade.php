@@ -4,7 +4,6 @@
 
 @section('content')
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <!-- Header -->
     <div class="flex justify-between items-center mb-8">
         <div>
             <h1 class="text-3xl font-bold text-gray-900">Journaux des Vérifications</h1>
@@ -12,7 +11,6 @@
         </div>
     </div>
 
-    <!-- Filters -->
     <div class="bg-white shadow rounded-lg p-6 mb-6">
         <form method="GET" class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -61,7 +59,6 @@
         </form>
     </div>
 
-    <!-- Logs Table -->
     @if($logs->count() > 0)
         <div class="bg-white shadow rounded-lg overflow-hidden">
             <div class="overflow-x-auto">
@@ -115,13 +112,11 @@
                 </table>
             </div>
             
-            <!-- Pagination -->
             <div class="px-6 py-4 border-t border-gray-200">
                 {{ $logs->appends(request()->query())->links() }}
             </div>
         </div>
     @else
-        <!-- Empty State -->
         <div class="text-center py-12 bg-white shadow rounded-lg">
             <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>

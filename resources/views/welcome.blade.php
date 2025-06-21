@@ -8,7 +8,6 @@
 </head>
 <body class="font-sans antialiased bg-gray-50">
     <div class="min-h-screen">
-        <!-- Navigation -->
         <nav class="bg-white shadow-sm">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between h-16">
@@ -23,7 +22,6 @@
             </div>
         </nav>
 
-        <!-- Hero Section -->
         <div class="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
                 <div class="text-center">
@@ -45,7 +43,6 @@
             </div>
         </div>
 
-        <!-- Features Section -->
         <div id="features" class="py-24 bg-white">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="text-center mb-16">
@@ -91,7 +88,6 @@
             </div>
         </div>
 
-        <!-- CTA Section -->
         <div class="bg-gray-900 text-white py-16">
             <div class="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
                 <h2 class="text-3xl md:text-4xl font-bold mb-4">
@@ -106,7 +102,6 @@
             </div>
         </div>
 
-        <!-- Footer -->
         <footer class="bg-white border-t border-gray-200">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <div class="text-center text-gray-600">

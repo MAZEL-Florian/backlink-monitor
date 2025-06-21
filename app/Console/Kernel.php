@@ -11,21 +11,23 @@ class Kernel extends ConsoleKernel
         Commands\CheckBacklinksCommand::class,
         Commands\TestBacklinkCommand::class,
         Commands\DebugLinksCommand::class,
+        Commands\DebugBacklinkChecksCommand::class,
         Commands\SendBacklinkReportsCommand::class,
     ];
 
     protected function schedule(Schedule $schedule): void
     {
-        // Vérifier les backlinks toutes les heures
-        $schedule->command('backlinks:check --limit=100')
-                 ->hourly()
+        // Vérifier les backlinks tous les jours à 8h
+        $schedule->command('backlinks:check --limit=200 --send-report')
+                 ->dailyAt('08:00')
                  ->withoutOverlapping();
 
-        // Envoyer les rapports quotidiens à 8h (seulement si problèmes)
-        $schedule->command('backlinks:send-reports')
-                 ->dailyAt('08:00');
+        // Vérification supplémentaire toutes les 6 heures pour les backlinks critiques
+        $schedule->command('backlinks:check --limit=50')
+                 ->everySixHours()
+                 ->withoutOverlapping();
 
-        // Envoyer les rapports hebdomadaires le lundi à 9h (même sans problèmes)
+        // Envoyer les rapports hebdomadaires le lundi à 9h
         $schedule->command('backlinks:send-reports')
                  ->weeklyOn(1, '09:00');
     }

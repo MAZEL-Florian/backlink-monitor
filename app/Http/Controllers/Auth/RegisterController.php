@@ -29,7 +29,7 @@ class RegisterController extends Controller
                 'name' => $request->name,
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
-                'email_notifications' => true, // Valeur par défaut
+                'email_notifications' => true,
             ]);
 
             Auth::login($user);

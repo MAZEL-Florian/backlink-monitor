@@ -93,7 +93,6 @@
             </div>
         </form>
 
-        <!-- Delete Form (hidden) -->
         <form id="delete-form" action="{{ route('projects.destroy', $project) }}" method="POST" class="hidden">
             @csrf
             @method('DELETE')

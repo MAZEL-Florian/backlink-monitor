@@ -7,18 +7,6 @@ use App\Http\Controllers\BacklinkController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\DB;
-
-// Route de test pour vérifier la base de données
-Route::get('/test-db', function () {
-    try {
-        DB::connection()->getPdo();
-        $users = DB::table('users')->count();
-        return "Connexion DB OK. Nombre d'utilisateurs: " . $users;
-    } catch (\Exception $e) {
-        return "Erreur DB: " . $e->getMessage();
-    }
-});
 
 Route::get('/', function () {
     return view('welcome');
@@ -36,16 +24,20 @@ Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 });
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     
     // Projects Routes
     Route::resource('projects', ProjectController::class);
+    Route::post('/projects/{project}/check-all-backlinks', [ProjectController::class, 'checkAllBacklinks'])->name('projects.check-all-backlinks');
+    Route::delete('/projects/bulk-delete', [ProjectController::class, 'bulkDelete'])->name('projects.bulk-delete');
+    Route::delete('/projects/{project}/bulk-delete-backlinks', [ProjectController::class, 'bulkDeleteBacklinks'])->name('projects.bulk-delete-backlinks');
     
     // Backlinks Routes
     Route::resource('backlinks', BacklinkController::class);
     Route::post('/backlinks/{backlink}/check', [BacklinkController::class, 'check'])->name('backlinks.check');
     Route::post('/backlinks/bulk-check', [BacklinkController::class, 'bulkCheck'])->name('backlinks.bulk-check');
+    Route::delete('/backlinks/bulk-delete', [BacklinkController::class, 'bulkDelete'])->name('backlinks.bulk-delete');
 });
 
 Route::middleware('auth')->group(function () {

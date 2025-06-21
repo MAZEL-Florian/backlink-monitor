@@ -39,7 +39,6 @@ class BookingController extends Controller
         $event = Event::findOrFail($validated['event_id']);
         $this->authorize('view', $event);
 
-        // Check if booking already exists
         $existingBooking = Booking::where('event_id', $validated['event_id'])
                                  ->where('vendor_id', $validated['vendor_id'])
                                  ->where('status', '!=', 'cancelled')

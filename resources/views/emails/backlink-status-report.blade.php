@@ -123,7 +123,6 @@
         <p>Voici votre rapport de surveillance des backlinks du {{ now()->format('d/m/Y à H:i') }}</p>
     </div>
 
-    <!-- Statistiques générales -->
     <div class="stats-grid">
         <div class="stat-card success">
             <div class="stat-number">{{ $reportData['stats']['active_backlinks'] }}</div>
@@ -144,7 +143,6 @@
     </div>
 
     @if($reportData['inactive_backlinks']->count() > 0 || $reportData['error_backlinks']->count() > 0)
-        <!-- Backlinks Inactifs -->
         @if($reportData['inactive_backlinks']->count() > 0)
             <div class="section">
                 <div class="section-header">
@@ -178,7 +176,6 @@
             </div>
         @endif
 
-        <!-- Backlinks avec Erreurs -->
         @if($reportData['error_backlinks']->count() > 0)
             <div class="section">
                 <div class="section-header">
@@ -207,7 +204,6 @@
             </div>
         @endif
 
-        <!-- Actions recommandées -->
         <div class="section">
             <div class="section-header">
                 💡 Actions Recommandées
@@ -234,7 +230,6 @@
         </div>
     @endif
 
-    <!-- Résumé par projet -->
     @if($reportData['project_summary']->count() > 0)
         <div class="section">
             <div class="section-header">

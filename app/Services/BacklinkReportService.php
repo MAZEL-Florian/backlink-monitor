@@ -11,7 +11,6 @@ class BacklinkReportService
 {
     public function generateReportData(User $user): array
     {
-        // Statistiques générales
         $stats = [
             'total_backlinks' => $this->getTotalBacklinks($user),
             'active_backlinks' => $this->getActiveBacklinks($user),
@@ -19,17 +18,15 @@ class BacklinkReportService
             'error_backlinks' => $this->getErrorBacklinks($user),
         ];
 
-        // Backlinks inactifs avec détails
         $inactiveBacklinks = Backlink::whereHas('project', function($q) use ($user) {
             $q->where('user_id', $user->id);
         })
         ->where('is_active', false)
-        ->where('status_code', '!=', null) // Pas d'erreur de connexion
+        ->where('status_code', '!=', null)
         ->with(['project', 'latestCheck'])
         ->orderBy('last_checked_at', 'desc')
         ->get();
 
-        // Backlinks avec erreurs de vérification
         $errorBacklinks = Backlink::whereHas('project', function($q) use ($user) {
             $q->where('user_id', $user->id);
         })
@@ -40,7 +37,6 @@ class BacklinkReportService
         ->orderBy('last_checked_at', 'desc')
         ->get();
 
-        // Résumé par projet
         $projectSummary = Project::where('user_id', $user->id)
             ->withCount([
                 'backlinks',

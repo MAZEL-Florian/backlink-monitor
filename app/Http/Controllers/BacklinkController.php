@@ -4,9 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Project;
 use App\Models\Backlink;
+use App\Models\BacklinkCheck;
 use App\Jobs\CheckBacklinkJob;
+use App\Services\BacklinkCheckerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class BacklinkController extends Controller
 {
@@ -16,7 +20,6 @@ class BacklinkController extends Controller
             $q->where('user_id', Auth::id());
         })->with(['project', 'latestCheck']);
 
-        // Filtres
         if ($request->filled('project_id')) {
             $query->where('project_id', $request->project_id);
         }
@@ -60,38 +63,79 @@ class BacklinkController extends Controller
     {
         $validated = $request->validate([
             'project_id' => 'required|exists:projects,id',
-            'source_url' => 'required|url|max:500',
-            'target_url' => 'required|url|max:500',
-            'anchor_text' => 'nullable|string|max:255',
-            'domain_authority' => 'nullable|integer|min:0|max:100',
-            'page_authority' => 'nullable|integer|min:0|max:100',
-            'is_dofollow' => 'boolean',
+            'source_urls' => 'required|string',
             'notes' => 'nullable|string|max:1000',
         ]);
 
         $project = Project::findOrFail($validated['project_id']);
         $this->authorize('view', $project);
 
-        // Vérifier si le backlink existe déjà
-        $existingBacklink = Backlink::where('project_id', $validated['project_id'])
-            ->where('source_url', $validated['source_url'])
-            ->first();
-
-        if ($existingBacklink) {
-            return back()->withErrors(['source_url' => 'Ce backlink existe déjà pour ce projet.']);
+        $sourceUrls = $this->parseUrls($validated['source_urls']);
+        
+        if (empty($sourceUrls)) {
+            return back()->withErrors(['source_urls' => 'Aucune URL valide détectée.'])->withInput();
         }
 
-        $validated['first_found_at'] = now();
-        $backlink = Backlink::create($validated);
+        $createdCount = 0;
+        $skippedCount = 0;
+        $errors = [];
 
-        // Lancer la vérification immédiate
-        CheckBacklinkJob::dispatch($backlink);
+        foreach ($sourceUrls as $sourceUrl) {
+            try {
+                $existingBacklink = Backlink::where('project_id', $validated['project_id'])
+                    ->where('source_url', $sourceUrl)
+                    ->first();
 
-        return redirect()->route('projects.show', $project)
-            ->with('success', 'Backlink ajouté avec succès ! Vérification en cours...');
+                if ($existingBacklink) {
+                    $skippedCount++;
+                    continue;
+                }
+
+                $backlink = Backlink::create([
+                    'project_id' => $validated['project_id'],
+                    'source_url' => $sourceUrl,
+                    'target_url' => $project->domain,
+                    'anchor_text' => null, 
+                    'domain_authority' => null,
+                    'page_authority' => null,
+                    'is_dofollow' => true,
+                    'is_active' => false,
+                    'first_found_at' => now(),
+                    'notes' => $validated['notes'],
+                ]);
+
+                CheckBacklinkJob::dispatch($backlink, false, 'creation');
+                $createdCount++;
+
+            } catch (\Exception $e) {
+                $errors[] = "Erreur pour {$sourceUrl}: " . $e->getMessage();
+                Log::error("Erreur création backlink", [
+                    'source_url' => $sourceUrl,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        $message = "✅ {$createdCount} backlink(s) créé(s) avec succès !";
+        
+        if ($skippedCount > 0) {
+            $message .= " 🔄 {$skippedCount} backlink(s) ignoré(s) (déjà existants).";
+        }
+        
+        if (!empty($errors)) {
+            $message .= " ⚠️ " . count($errors) . " erreur(s) rencontrée(s).";
+        }
+
+        $message .= " 🔍 Vérifications en cours...";
+
+        if ($createdCount > 0) {
+            return redirect()->route('projects.show', $project)->with('success', $message);
+        } else {
+            return back()->withErrors(['source_urls' => 'Aucun backlink n\'a pu être créé.'])->withInput();
+        }
     }
 
-    public function show(Backlink $backlink)
+    public function show(Backlink $backlink, Request $request)
     {
         $this->authorize('view', $backlink->project);
 
@@ -99,13 +143,20 @@ class BacklinkController extends Controller
             ->latest('checked_at')
             ->paginate(20);
 
-        return view('backlinks.show', compact('backlink', 'checks'));
+        $uptimeDays = $request->get('uptime_days', 30);
+        $uptimeData = $this->getUptimeData($backlink, $uptimeDays);
+
+        return view('backlinks.show', compact('backlink', 'checks', 'uptimeData'));
     }
 
-    public function edit(Backlink $backlink)
+    public function edit(Backlink $backlink, Request $request)
     {
         $this->authorize('update', $backlink->project);
-        return view('backlinks.edit', compact('backlink'));
+        
+        $uptimeDays = $request->get('uptime_days', 30);
+        $uptimeData = $this->getUptimeData($backlink, $uptimeDays);
+        
+        return view('backlinks.edit', compact('backlink', 'uptimeData'));
     }
 
     public function update(Request $request, Backlink $backlink)
@@ -118,7 +169,6 @@ class BacklinkController extends Controller
             'anchor_text' => 'nullable|string|max:255',
             'domain_authority' => 'nullable|integer|min:0|max:100',
             'page_authority' => 'nullable|integer|min:0|max:100',
-            'is_dofollow' => 'boolean',
             'notes' => 'nullable|string|max:1000',
         ]);
 
@@ -138,13 +188,94 @@ class BacklinkController extends Controller
             ->with('success', 'Backlink supprimé avec succès !');
     }
 
-    public function check(Backlink $backlink)
+    public function bulkDelete(Request $request)
+    {
+        $validated = $request->validate([
+            'backlink_ids' => 'required|array',
+            'backlink_ids.*' => 'exists:backlinks,id',
+        ]);
+
+        $backlinks = Backlink::whereIn('id', $validated['backlink_ids'])
+            ->whereHas('project', function($q) {
+                $q->where('user_id', Auth::id());
+            })->get();
+
+        if ($backlinks->isEmpty()) {
+            return back()->with('error', 'Aucun backlink trouvé à supprimer.');
+        }
+
+        $count = $backlinks->count();
+        
+        foreach ($backlinks as $backlink) {
+            $backlink->delete();
+        }
+
+        $message = $count === 1 
+            ? 'Backlink supprimé avec succès !'
+            : "{$count} backlinks supprimés avec succès !";
+
+        return back()->with('success', $message);
+    }
+
+    public function check(Backlink $backlink, BacklinkCheckerService $checker)
     {
         $this->authorize('view', $backlink->project);
 
-        CheckBacklinkJob::dispatch($backlink);
+        try {
+            Log::info("Vérification manuelle du backlink {$backlink->id}");
+            
+            $wasActive = $backlink->is_active;
+            $result = $checker->check($backlink);
+            
+            $check = BacklinkCheck::createFromBacklink($backlink, $result, 'manual');
+            
+            $backlink->update([
+                'status_code' => $result['status_code'],
+                'is_active' => $result['is_active'],
+                'is_dofollow' => $result['is_dofollow'],
+                'anchor_text' => $result['anchor_text'] ?? $backlink->anchor_text,
+                'target_url' => $result['target_url'] ?? $backlink->target_url,
+                'last_checked_at' => now(),
+            ]);
 
-        return back()->with('success', 'Vérification du backlink lancée !');
+            Log::info("Vérification manuelle terminée", [
+                'backlink_id' => $backlink->id,
+                'check_id' => $check->id,
+                'is_active' => $result['is_active'],
+                'status_code' => $result['status_code']
+            ]);
+
+            $message = $result['is_active'] 
+                ? '✅ Backlink vérifié : ACTIF' 
+                : '❌ Backlink vérifié : INACTIF';
+                
+            if (isset($result['status_code'])) {
+                $message .= " (HTTP {$result['status_code']})";
+            }
+
+            return back()->with('success', $message);
+
+        } catch (\Exception $e) {
+            Log::error('Erreur lors de la vérification manuelle du backlink ' . $backlink->id . ': ' . $e->getMessage());
+            
+            BacklinkCheck::createFromBacklink($backlink, [
+                'status_code' => null,
+                'is_active' => false,
+                'is_dofollow' => $backlink->is_dofollow,
+                'anchor_text' => $backlink->anchor_text,
+                'response_time' => null,
+                'error_message' => $e->getMessage(),
+                'exact_match' => false,
+                'target_url' => $backlink->target_url,
+                'user_agent' => null,
+                'redirects' => [],
+                'content_length' => null,
+                'content_type' => null,
+                'raw_response' => null,
+            ], 'manual');
+
+            return back()->with('error', 'Erreur lors de la vérification : ' . $e->getMessage());
+        }
     }
 
     public function bulkCheck(Request $request)
@@ -160,9 +291,90 @@ class BacklinkController extends Controller
             })->get();
 
         foreach ($backlinks as $backlink) {
-            CheckBacklinkJob::dispatch($backlink);
+            CheckBacklinkJob::dispatch($backlink, false, 'bulk');
         }
 
         return back()->with('success', 'Vérification de ' . $backlinks->count() . ' backlinks lancée !');
+    }
+
+    private function parseUrls(string $input): array
+    {
+        $lines = explode("\n", $input);
+        $urls = [];
+
+        foreach ($lines as $line) {
+            $url = trim($line);
+            
+            if (!empty($url) && (str_starts_with($url, 'http://') || str_starts_with($url, 'https://'))) {
+                if (filter_var($url, FILTER_VALIDATE_URL)) {
+                    $urls[] = $url;
+                }
+            }
+        }
+
+        return array_unique($urls); 
+    }
+
+    private function getUptimeData(Backlink $backlink, int $days = 30): array
+    {
+        $startDate = now()->subDays($days)->startOfDay();
+        $endDate = now()->endOfDay();
+        
+        $checks = $backlink->checks()
+            ->where('checked_at', '>=', $startDate)
+            ->where('checked_at', '<=', $endDate)
+            ->orderBy('checked_at')
+            ->get();
+
+        $checksGrouped = $checks->groupBy(function($check) {
+            $checkedAt = $check->checked_at;
+            
+            if (is_string($checkedAt)) {
+                $checkedAt = Carbon::parse($checkedAt);
+            }
+            
+            return $checkedAt->format('Y-m-d');
+        });
+
+        $uptimeData = [];
+        $totalDays = 0;
+        $activeDays = 0;
+
+        for ($date = $startDate->copy(); $date <= $endDate; $date->addDay()) {
+            $dateKey = $date->format('Y-m-d');
+            $dayChecks = $checksGrouped->get($dateKey, collect());
+            
+            $lastCheck = $dayChecks->last();
+            
+            $isActive = $lastCheck ? $lastCheck->is_active : null;
+            
+            $uptimeData[] = [
+                'date' => $date->format('Y-m-d'),
+                'date_formatted' => $date->format('M j'),
+                'is_active' => $isActive,
+                'has_check' => $lastCheck !== null,
+                'status_code' => $lastCheck ? $lastCheck->status_code : null,
+                'check_type' => $lastCheck ? $lastCheck->check_type : null,
+            ];
+
+            if ($lastCheck !== null) {
+                $totalDays++;
+                if ($isActive) {
+                    $activeDays++;
+                }
+            }
+        }
+
+        $uptimePercentage = $totalDays > 0 ? round(($activeDays / $totalDays) * 100, 1) : 0;
+
+        return [
+            'data' => $uptimeData,
+            'uptime_percentage' => $uptimePercentage,
+            'total_days' => $totalDays,
+            'active_days' => $activeDays,
+            'start_date' => $startDate->format('M j'),
+            'end_date' => $endDate->format('M j'),
+            'period_days' => $days,
+        ];
     }
 }

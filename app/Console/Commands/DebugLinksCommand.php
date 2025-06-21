@@ -38,7 +38,6 @@ class DebugLinksCommand extends Command
             $this->info("Taille du contenu: " . strlen($content) . " caractères");
             $this->line('');
             
-            // Extraire tous les liens
             $links = $this->extractLinks($content);
             $this->info("Total de liens trouvés: " . count($links));
             $this->line('');
@@ -73,7 +72,6 @@ class DebugLinksCommand extends Command
                     }
                 }
             } else {
-                // Afficher tous les liens
                 foreach (array_slice($links, 0, 20) as $i => $link) {
                     $this->line(($i + 1) . ". {$link['href']} -> \"{$link['text']}\"");
                 }
@@ -112,7 +110,6 @@ class DebugLinksCommand extends Command
                 }
             }
         } catch (\Exception $e) {
-            // Fallback regex
             preg_match_all('/<a\s+[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is', $content, $matches, PREG_SET_ORDER);
             
             foreach ($matches as $match) {

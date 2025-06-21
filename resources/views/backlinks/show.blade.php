@@ -4,7 +4,6 @@
 
 @section('content')
 <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-    <!-- Header -->
     <div class="flex justify-between items-center mb-8">
         <div>
             <div class="flex items-center space-x-2 mb-2">
@@ -36,7 +35,10 @@
         </div>
     </div>
 
-    <!-- Backlink Info -->
+    <div class="mb-8">
+        @include('components.uptime-timeline', ['uptimeData' => $uptimeData])
+    </div>
+
     <div class="bg-white shadow rounded-lg mb-8">
         <div class="px-6 py-4 border-b border-gray-200">
             <h3 class="text-lg font-medium text-gray-900">Informations du Backlink</h3>
@@ -132,7 +134,6 @@
         </div>
     </div>
 
-    <!-- Checks History -->
     <div class="bg-white shadow rounded-lg">
         <div class="px-6 py-4 border-b border-gray-200">
             <h3 class="text-lg font-medium text-gray-900">Historique des Vérifications</h3>
@@ -214,7 +215,6 @@
                 </table>
             </div>
             
-            <!-- Pagination -->
             @if($checks->hasPages())
                 <div class="px-6 py-4 border-t border-gray-200">
                     {{ $checks->links() }}

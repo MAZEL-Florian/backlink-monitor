@@ -140,10 +140,8 @@
 
 @push('scripts')
 <script>
-    // Set minimum date to today
     document.getElementById('event_date').min = new Date().toISOString().slice(0, 16);
     
-    // Budget formatting
     document.getElementById('budget').addEventListener('input', function(e) {
         let value = e.target.value;
         if (value && !isNaN(value)) {

@@ -3,7 +3,7 @@
 @section('title', 'Modifier le Backlink')
 
 @section('content')
-<div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="mb-8">
         <div class="flex items-center space-x-2 mb-2">
             <a href="{{ route('backlinks.show', $backlink) }}" class="text-gray-500 hover:text-gray-700">
@@ -14,6 +14,10 @@
             <h1 class="text-3xl font-bold text-gray-900">Modifier le Backlink</h1>
         </div>
         <p class="text-gray-600">Modifiez les informations de ce backlink</p>
+    </div>
+
+    <div class="mb-8">
+        @include('components.uptime-timeline', ['uptimeData' => $uptimeData])
     </div>
 
     <div class="bg-white shadow rounded-lg">
@@ -141,7 +145,6 @@
             </div>
         </form>
 
-        <!-- Delete Form (hidden) -->
         <form id="delete-form" action="{{ route('backlinks.destroy', $backlink) }}" method="POST" class="hidden">
             @csrf
             @method('DELETE')
