@@ -34,9 +34,13 @@ class CheckBacklinkJob implements ShouldQueue
 
             $wasActive = $this->backlink->is_active;
             $result = $checker->check($this->backlink);
-            
+
+            if (!$result['is_dofollow']) {
+                $result['is_active'] = false;
+            }
+
             $check = BacklinkCheck::createFromBacklink($this->backlink, $result, $this->checkType);
-            
+
             Log::info("Log de vérification créé", [
                 'check_id' => $check->id,
                 'backlink_id' => $this->backlink->id,
@@ -61,11 +65,10 @@ class CheckBacklinkJob implements ShouldQueue
                 'backlink_id' => $this->backlink->id,
                 'check_id' => $check->id
             ]);
-
         } catch (\Exception $e) {
             Log::error('Erreur lors de la vérification du backlink ' . $this->backlink->id . ': ' . $e->getMessage());
-            
-            $check = BacklinkCheck::createFromBacklink($this->backlink, [
+
+            $errorResult = [
                 'status_code' => null,
                 'is_active' => false,
                 'is_dofollow' => $this->backlink->is_dofollow,
@@ -79,7 +82,13 @@ class CheckBacklinkJob implements ShouldQueue
                 'content_length' => null,
                 'content_type' => null,
                 'raw_response' => null,
-            ], $this->checkType);
+            ];
+
+            if (!$errorResult['is_dofollow']) {
+                $errorResult['is_active'] = false;
+            }
+
+            $check = BacklinkCheck::createFromBacklink($this->backlink, $errorResult, $this->checkType);
 
             if ($this->isAutomaticCheck) {
                 $this->storeAutomaticCheckResult($this->backlink->is_active, false, $e->getMessage());
@@ -91,7 +100,7 @@ class CheckBacklinkJob implements ShouldQueue
     {
         $userId = $this->backlink->project->user_id;
         $cacheKey = "automatic_check_results_{$userId}";
-        
+
         $results = Cache::get($cacheKey, [
             'user_id' => $userId,
             'check_time' => now(),

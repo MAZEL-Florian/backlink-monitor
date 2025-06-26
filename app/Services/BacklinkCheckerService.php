@@ -6,6 +6,7 @@ use App\Models\Backlink;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Arr;
 
 class BacklinkCheckerService
 {
@@ -15,7 +16,7 @@ class BacklinkCheckerService
     public function __construct()
     {
         $this->userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-        
+
         $this->client = new Client([
             'timeout' => 30,
             'connect_timeout' => 10,
@@ -37,11 +38,11 @@ class BacklinkCheckerService
     public function check(Backlink $backlink): array
     {
         $startTime = microtime(true);
-        
+
         Log::info("=== DÉBUT VÉRIFICATION BACKLINK {$backlink->id} ===");
         Log::info("URL Source: {$backlink->source_url}");
         Log::info("Domaine du projet: {$backlink->project->domain}");
-        
+
         try {
             Log::info("ÉTAPE 1: Vérification de l'accessibilité de l'URL source");
             $response = $this->client->get($backlink->source_url);
@@ -87,9 +88,8 @@ class BacklinkCheckerService
                 'raw_response' => config('app.debug') ? substr($content, 0, 1000) : null,
             ];
 
-            Log::info("=== RÉSULTAT FINAL ===", array_except($result, ['raw_response']));
+            Log::info("=== RÉSULTAT FINAL ===", Arr::except($result, ['raw_response']));
             return $result;
-
         } catch (RequestException $e) {
             $responseTime = round((microtime(true) - $startTime) * 1000);
             $statusCode = $e->hasResponse() ? $e->getResponse()->getStatusCode() : null;
@@ -122,14 +122,14 @@ class BacklinkCheckerService
     {
         $projectHost = parse_url($projectDomain, PHP_URL_HOST);
         Log::info("Recherche de liens vers le domaine: {$projectHost}");
-        
+
         $allLinks = $this->extractAllLinks($content);
         Log::info("Total de liens trouvés: " . count($allLinks));
 
         $projectLinks = [];
         foreach ($allLinks as $link) {
             $href = $link['href'];
-            
+
             if ($this->isProjectLink($href, $projectHost, $projectDomain)) {
                 $projectLinks[] = $link;
                 Log::info("Lien vers le projet trouvé: {$href} -> '{$link['text']}'");
@@ -138,9 +138,9 @@ class BacklinkCheckerService
 
         if (!empty($projectLinks)) {
             $bestLink = $this->selectBestLink($projectLinks, $projectDomain);
-            
+
             return [
-                'found' => true,
+                'found' => $bestLink['is_dofollow'],
                 'anchor_text' => $bestLink['text'],
                 'is_dofollow' => $bestLink['is_dofollow'],
                 'exact_match' => $bestLink['href'] === $projectDomain,
@@ -161,19 +161,19 @@ class BacklinkCheckerService
     private function extractAllLinks(string $content): array
     {
         $links = [];
-        
+
         try {
             $dom = new \DOMDocument();
             @$dom->loadHTML($content);
             $linkElements = $dom->getElementsByTagName('a');
-            
+
             foreach ($linkElements as $element) {
                 $href = $element->getAttribute('href');
                 $rel = $element->getAttribute('rel');
-                
+
                 if (!empty($href)) {
                     $anchorText = $this->extractAnchorText($element);
-                    
+
                     $links[] = [
                         'href' => $href,
                         'text' => $anchorText,
@@ -183,22 +183,22 @@ class BacklinkCheckerService
             }
         } catch (\Exception $e) {
             Log::warning("Erreur DOM, utilisation de regex", ['error' => $e->getMessage()]);
-            
+
             $links = array_merge($links, $this->extractLinksWithRegex($content));
         }
-        
+
         return $links;
     }
 
     private function extractAnchorText(\DOMElement $element): string
     {
         $images = $element->getElementsByTagName('img');
-        
+
         if ($images->length > 0) {
             $img = $images->item(0);
             $alt = $img->getAttribute('alt');
             $src = $img->getAttribute('src');
-            
+
             if (!empty($alt)) {
                 return '[IMG] ' . trim($alt);
             } else {
@@ -206,32 +206,32 @@ class BacklinkCheckerService
                 return '[IMG] ' . $filename;
             }
         }
-        
+
         $text = trim($element->textContent);
-        
+
         if (empty($text)) {
             $title = $element->getAttribute('title');
             if (!empty($title)) {
                 return '[TITLE] ' . $title;
             }
-            
+
             return '[LIEN VIDE]';
         }
-        
+
         return $text;
     }
 
     private function extractLinksWithRegex(string $content): array
     {
         $links = [];
-        
+
         preg_match_all('/<a\s+[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is', $content, $matches, PREG_SET_ORDER);
-        
+
         foreach ($matches as $match) {
             $href = $match[1];
             $linkContent = $match[2];
             $fullTag = $match[0];
-            
+
             if (preg_match('/<img[^>]+alt=["\']([^"\']*)["\'][^>]*>/i', $linkContent, $imgMatch)) {
                 $alt = $imgMatch[1];
                 $text = !empty($alt) ? '[IMG] ' . $alt : '[IMG] Image sans alt';
@@ -245,14 +245,14 @@ class BacklinkCheckerService
                     $text = '[LIEN VIDE]';
                 }
             }
-            
+
             $links[] = [
                 'href' => $href,
                 'text' => $text,
                 'is_dofollow' => !preg_match('/rel=["\'][^"\']*nofollow[^"\']*["\']/', $fullTag)
             ];
         }
-        
+
         return $links;
     }
 
@@ -261,18 +261,18 @@ class BacklinkCheckerService
         if (str_contains($href, $projectHost)) {
             return true;
         }
-        
+
         if ($href === $projectDomain) {
             return true;
         }
-        
+
         $variations = $this->getUrlVariations($projectDomain);
         foreach ($variations as $variation) {
             if ($href === $variation || str_contains($href, parse_url($variation, PHP_URL_HOST))) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
@@ -283,13 +283,13 @@ class BacklinkCheckerService
                 return $link;
             }
         }
-        
+
         foreach ($projectLinks as $link) {
             if ($link['is_dofollow']) {
                 return $link;
             }
         }
-        
+
         return $projectLinks[0];
     }
 
@@ -298,39 +298,39 @@ class BacklinkCheckerService
         if (str_starts_with($href, 'http')) {
             return $href;
         }
-        
+
         $projectParsed = parse_url($projectDomain);
         $baseUrl = $projectParsed['scheme'] . '://' . $projectParsed['host'];
-        
+
         if (str_starts_with($href, '/')) {
             return $baseUrl . $href;
         }
-        
+
         return $baseUrl . '/' . $href;
     }
 
     private function getUrlVariations(string $url): array
     {
         $variations = [];
-        
+
         if (strpos($url, '://www.') !== false) {
             $variations[] = str_replace('://www.', '://', $url);
         } else {
             $variations[] = str_replace('://', '://www.', $url);
         }
-        
+
         if (strpos($url, 'https://') === 0) {
             $variations[] = str_replace('https://', 'http://', $url);
         } else {
             $variations[] = str_replace('http://', 'https://', $url);
         }
-        
+
         $variations[] = rtrim($url, '/');
-        
+
         if (!str_ends_with($url, '/')) {
             $variations[] = $url . '/';
         }
-        
+
         return array_unique($variations);
     }
 }
