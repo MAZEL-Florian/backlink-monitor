@@ -140,27 +140,6 @@ function confirmBulkDelete() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    const header = document.querySelector('h1').parentElement;
-    if (document.querySelectorAll('.project-checkbox').length > 0) {
-        const selectAllBtn = document.createElement('button');
-        selectAllBtn.type = 'button';
-        selectAllBtn.className = 'text-sm text-blue-600 hover:text-blue-800';
-        selectAllBtn.textContent = 'Tout sélectionner';
-        selectAllBtn.onclick = function() {
-            const checkboxes = document.querySelectorAll('.project-checkbox');
-            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-            
-            checkboxes.forEach(cb => cb.checked = !allChecked);
-            this.textContent = allChecked ? 'Tout sélectionner' : 'Tout désélectionner';
-            updateBulkDeleteButton();
-        };
-        
-        const selectAllContainer = document.createElement('div');
-        selectAllContainer.className = 'mb-4';
-        selectAllContainer.appendChild(selectAllBtn);
-        header.parentElement.insertBefore(selectAllContainer, header.nextSibling);
-    }
-});
+
 </script>
 @endsection
