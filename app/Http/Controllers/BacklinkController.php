@@ -166,18 +166,55 @@ class BacklinkController extends Controller
         $this->authorize('update', $backlink->project);
 
         $validated = $request->validate([
+            'project_id' => 'required|exists:projects,id',
             'source_url' => 'required|url|max:500',
-            'target_url' => 'required|url|max:500',
-            'anchor_text' => 'nullable|string|max:255',
-            'domain_authority' => 'nullable|integer|min:0|max:100',
-            'page_authority' => 'nullable|integer|min:0|max:100',
             'notes' => 'nullable|string|max:1000',
         ]);
 
-        $backlink->update($validated);
+        $project = Project::where('id', $validated['project_id'])
+            ->where('user_id', Auth::id())
+            ->first();
 
-        return redirect()->route('backlinks.show', $backlink)
-            ->with('success', 'Backlink mis à jour avec succès !');
+        if (!$project) {
+            return back()->withErrors(['project_id' => 'Projet non trouvé ou non autorisé.']);
+        }
+
+        if ($backlink->source_url !== $validated['source_url']) {
+            $existingBacklink = Backlink::where('project_id', $validated['project_id'])
+                ->where('source_url', $validated['source_url'])
+                ->where('id', '!=', $backlink->id)
+                ->first();
+
+            if ($existingBacklink) {
+                return back()->withErrors(['source_url' => 'Cette URL source existe déjà pour ce projet.'])->withInput();
+            }
+        }
+
+        try {
+            $backlink->update([
+                'project_id' => $validated['project_id'],
+                'source_url' => $validated['source_url'],
+                'target_url' => $project->domain,
+                'notes' => $validated['notes'],
+            ]);
+
+            if ($backlink->wasChanged('source_url')) {
+                CheckBacklinkJob::dispatch($backlink, false, 'update');
+                $message = 'Backlink mis à jour avec succès ! Une vérification a été lancée pour la nouvelle URL.';
+            } else {
+                $message = 'Backlink mis à jour avec succès !';
+            }
+
+            return redirect()->route('backlinks.show', $backlink)
+                ->with('success', $message);
+        } catch (\Exception $e) {
+            Log::error("Erreur lors de la mise à jour du backlink", [
+                'backlink_id' => $backlink->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return back()->withErrors(['error' => 'Une erreur est survenue lors de la mise à jour.'])->withInput();
+        }
     }
 
     public function destroy(Backlink $backlink)
@@ -226,59 +263,59 @@ class BacklinkController extends Controller
         try {
             Log::info("Vérification manuelle du backlink {$backlink->id}");
 
-//             $wasActive = $backlink->is_active;
-//             $result = $checker->check($backlink);
+            //             $wasActive = $backlink->is_active;
+            //             $result = $checker->check($backlink);
 
-//             if (!$result['is_dofollow']) {
-//                 $result['is_active'] = false;
-//             }
+            //             if (!$result['is_dofollow']) {
+            //                 $result['is_active'] = false;
+            //             }
 
-//             $check = BacklinkCheck::createFromBacklink($backlink, $result, 'manual');
+            //             $check = BacklinkCheck::createFromBacklink($backlink, $result, 'manual');
 
-//             $backlink->update([
-//                 'status_code' => $result['status_code'],
-//                 'is_active' => $result['is_active'],
-//                 'is_dofollow' => $result['is_dofollow'],
-//                 'anchor_text' => $result['anchor_text'] ?? $backlink->anchor_text,
-//                 'target_url' => $result['target_url'] ?? $backlink->target_url,
-//                 'last_checked_at' => now(),
-//             ]);
-//   if ($wasActive !== $result['is_active']) {
-//             try {
-//                 Mail::to(Auth::user()->email)->send(
-//                     new BacklinkStatusChanged($backlink, $wasActive, $result['is_active'])
-//                 );
-                
-//                 Log::info("Email de changement de statut envoyé (vérification manuelle)", [
-//                     'backlink_id' => $backlink->id,
-//                     'user_email' => Auth::user()->email,
-//                     'was_active' => $wasActive,
-//                     'is_active' => $result['is_active']
-//                 ]);
-//             } catch (\Exception $e) {
-//                 Log::warning("Erreur lors de l'envoi de l'email", [
-//                     'backlink_id' => $backlink->id,
-//                     'error' => $e->getMessage()
-//                 ]);
-//             }
-//         }
+            //             $backlink->update([
+            //                 'status_code' => $result['status_code'],
+            //                 'is_active' => $result['is_active'],
+            //                 'is_dofollow' => $result['is_dofollow'],
+            //                 'anchor_text' => $result['anchor_text'] ?? $backlink->anchor_text,
+            //                 'target_url' => $result['target_url'] ?? $backlink->target_url,
+            //                 'last_checked_at' => now(),
+            //             ]);
+            //   if ($wasActive !== $result['is_active']) {
+            //             try {
+            //                 Mail::to(Auth::user()->email)->send(
+            //                     new BacklinkStatusChanged($backlink, $wasActive, $result['is_active'])
+            //                 );
 
-//             Log::info("Vérification manuelle terminée", [
-//                 'backlink_id' => $backlink->id,
-//                 'check_id' => $check->id,
-//                 'is_active' => $result['is_active'],
-//                 'status_code' => $result['status_code']
-//             ]);
+            //                 Log::info("Email de changement de statut envoyé (vérification manuelle)", [
+            //                     'backlink_id' => $backlink->id,
+            //                     'user_email' => Auth::user()->email,
+            //                     'was_active' => $wasActive,
+            //                     'is_active' => $result['is_active']
+            //                 ]);
+            //             } catch (\Exception $e) {
+            //                 Log::warning("Erreur lors de l'envoi de l'email", [
+            //                     'backlink_id' => $backlink->id,
+            //                     'error' => $e->getMessage()
+            //                 ]);
+            //             }
+            //         }
 
-//             $message = $result['is_active']
-//                 ? '✅ Backlink vérifié : ACTIF'
-//                 : '❌ Backlink vérifié : INACTIF';
+            //             Log::info("Vérification manuelle terminée", [
+            //                 'backlink_id' => $backlink->id,
+            //                 'check_id' => $check->id,
+            //                 'is_active' => $result['is_active'],
+            //                 'status_code' => $result['status_code']
+            //             ]);
 
-//             if (isset($result['status_code'])) {
-//                 $message .= " (HTTP {$result['status_code']})";
-//             }
-CheckBacklinkJob::dispatch($backlink, false, 'manual', null);
-        return back()->with('success', '🔍 Vérification lancée ! Vous recevrez une notification en cas de changement de statut.');
+            //             $message = $result['is_active']
+            //                 ? '✅ Backlink vérifié : ACTIF'
+            //                 : '❌ Backlink vérifié : INACTIF';
+
+            //             if (isset($result['status_code'])) {
+            //                 $message .= " (HTTP {$result['status_code']})";
+            //             }
+            CheckBacklinkJob::dispatch($backlink, false, 'manual', null);
+            return back()->with('success', '🔍 Vérification lancée ! Vous recevrez une notification en cas de changement de statut.');
         } catch (\Exception $e) {
             Log::error('Erreur lors de la vérification manuelle du backlink ' . $backlink->id . ': ' . $e->getMessage());
 
@@ -303,52 +340,52 @@ CheckBacklinkJob::dispatch($backlink, false, 'manual', null);
             }
 
             BacklinkCheck::createFromBacklink($backlink, $errorResult, 'manual');
-if ($backlink->is_active) {
-            try {
-                Mail::to(Auth::user()->email)->send(
-                    new BacklinkStatusChanged($backlink, true, false)
-                );
-            } catch (\Exception $mailException) {
-                Log::warning("Erreur lors de l'envoi de l'email d'erreur", [
-                    'backlink_id' => $backlink->id,
-                    'error' => $mailException->getMessage()
-                ]);
+            if ($backlink->is_active) {
+                try {
+                    Mail::to(Auth::user()->email)->send(
+                        new BacklinkStatusChanged($backlink, true, false)
+                    );
+                } catch (\Exception $mailException) {
+                    Log::warning("Erreur lors de l'envoi de l'email d'erreur", [
+                        'backlink_id' => $backlink->id,
+                        'error' => $mailException->getMessage()
+                    ]);
+                }
             }
-        }
             return back()->with('error', 'Erreur lors de la vérification : ' . $e->getMessage());
         }
     }
 
-   public function bulkCheck(Request $request)
-{
-    $validated = $request->validate([
-        'backlink_ids' => 'required|array',
-        'backlink_ids.*' => 'exists:backlinks,id',
-    ]);
+    public function bulkCheck(Request $request)
+    {
+        $validated = $request->validate([
+            'backlink_ids' => 'required|array',
+            'backlink_ids.*' => 'exists:backlinks,id',
+        ]);
 
-    $backlinks = Backlink::whereIn('id', $validated['backlink_ids'])
-        ->whereHas('project', function ($q) {
-            $q->where('user_id', Auth::id());
-        })->get();
+        $backlinks = Backlink::whereIn('id', $validated['backlink_ids'])
+            ->whereHas('project', function ($q) {
+                $q->where('user_id', Auth::id());
+            })->get();
 
-    $batchId = 'batch_' . Auth::id() . '_' . time() . '_' . rand(1000, 9999);
-    
-    $cacheKey = "batch_check_results_{$batchId}";
-    Cache::put($cacheKey, [
-        'user_id' => Auth::id(),
-        'batch_id' => $batchId,
-        'check_time' => now(),
-        'results' => [],
-        'completed_count' => 0,
-        'total_count' => $backlinks->count(),
-    ], now()->addHours(2));
+        $batchId = 'batch_' . Auth::id() . '_' . time() . '_' . rand(1000, 9999);
 
-    foreach ($backlinks as $backlink) {
-        CheckBacklinkJob::dispatch($backlink, false, 'bulk', $batchId);
+        $cacheKey = "batch_check_results_{$batchId}";
+        Cache::put($cacheKey, [
+            'user_id' => Auth::id(),
+            'batch_id' => $batchId,
+            'check_time' => now(),
+            'results' => [],
+            'completed_count' => 0,
+            'total_count' => $backlinks->count(),
+        ], now()->addHours(2));
+
+        foreach ($backlinks as $backlink) {
+            CheckBacklinkJob::dispatch($backlink, false, 'bulk', $batchId);
+        }
+
+        return back()->with('success', 'Vérification de ' . $backlinks->count() . ' backlinks lancée ! Vous recevrez un rapport par email.');
     }
-
-    return back()->with('success', 'Vérification de ' . $backlinks->count() . ' backlinks lancée ! Vous recevrez un rapport par email.');
-}
 
     private function parseUrls(string $input): array
     {

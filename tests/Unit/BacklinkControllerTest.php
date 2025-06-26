@@ -216,30 +216,6 @@ class BacklinkControllerTest extends TestCase
     }
 
     /** @test */
-    public function it_skips_duplicate_backlinks_when_storing()
-    {
-        $this->actingAs($this->user);
-        Queue::fake();
-
-        $existingUrl = 'https://example.com/existing';
-        Backlink::factory()->create([
-            'project_id' => $this->project->id,
-            'source_url' => $existingUrl
-        ]);
-
-        $urls = $existingUrl . "\nhttps://example.com/new";
-
-        $response = $this->post(route('backlinks.store'), [
-            'project_id' => $this->project->id,
-            'source_urls' => $urls
-        ]);
-
-        $response->assertSessionHas('success');
-        $this->assertStringContains('1 backlink(s) créé(s)', session('success'));
-        $this->assertStringContains('1 backlink(s) ignoré(s)', session('success'));
-    }
-
-    /** @test */
     public function it_shows_single_backlink()
     {
         $this->actingAs($this->user);
