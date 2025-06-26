@@ -6,7 +6,7 @@ use App\Models\Project;
 use App\Jobs\CheckBacklinkJob;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-
+use Illuminate\Support\Facades\Cache;
 class ProjectController extends Controller
 {
     public function index()
@@ -154,22 +154,34 @@ class ProjectController extends Controller
         return back()->with('success', $message);
     }
 
-    public function checkAllBacklinks(Project $project)
-    {
-        $this->authorize('view', $project);
+   public function checkAllBacklinks(Project $project)
+{
+    $this->authorize('view', $project);
 
-        $backlinks = $project->backlinks;
-        
-        if ($backlinks->isEmpty()) {
-            return back()->with('error', 'Aucun backlink à vérifier pour ce projet.');
-        }
-
-        foreach ($backlinks as $backlink) {
-            CheckBacklinkJob::dispatch($backlink);
-        }
-
-        return back()->with('success', "Vérification de {$backlinks->count()} backlinks lancée !");
+    $backlinks = $project->backlinks;
+    
+    if ($backlinks->isEmpty()) {
+        return back()->with('error', 'Aucun backlink à vérifier pour ce projet.');
     }
+
+    $batchId = 'batch_' . uniqid() . '_' . time();
+    
+    $cacheKey = "batch_check_results_{$batchId}";
+    Cache::put($cacheKey, [
+        'user_id' => $project->user_id,
+        'batch_id' => $batchId,
+        'check_time' => now(),
+        'results' => [],
+        'completed_count' => 0,
+        'total_count' => $backlinks->count(),
+    ], now()->addHours(2));
+
+    foreach ($backlinks as $backlink) {
+        CheckBacklinkJob::dispatch($backlink, false, 'bulk', $batchId);
+    }
+
+    return back()->with('success', "Vérification de {$backlinks->count()} backlinks lancée ! Vous recevrez un rapport par email une fois terminé.");
+}
 
     private function cleanDomain($url)
     {
